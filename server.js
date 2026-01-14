@@ -23,15 +23,18 @@ mongoose.connect(process.env.MONGO_URI)
 // AI Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// --- UPDATED: Email Transporter Setup (Fixes Timeout) ---
+// --- UPDATED: Email Transporter Setup (Port 587 Fix) ---
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com", // Explicit host for better reliability
-  port: 465,              // Secure SSL port
-  secure: true,           // Use SSL
+  host: 'smtp.gmail.com',
+  port: 587,              // Use 587 instead of 465
+  secure: false,          // Must be false for port 587
+  requireTLS: true,       // Force secure connection (STARTTLS)
   auth: {
-    user: process.env.EMAIL_USER, 
-    pass: process.env.EMAIL_PASS, 
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
+  logger: true,           // Helps debug on Render logs
+  debug: true             // Shows detailed connection info in logs
 });
 
 const otpStore = {};
@@ -126,10 +129,9 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
   const { title, description, deadline, hoursPerDay } = req.body;
 
   try {
-    // UPDATED: Ensure valid model name (gemini-1.5-flash is standard)
+    // UPDATED: Using correct Gemini model name
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
     
-    // --- KEY FIX: GET TODAY'S DATE ---
     const today = new Date().toDateString();
 
     const prompt = `
