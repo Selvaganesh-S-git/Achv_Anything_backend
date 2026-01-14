@@ -127,7 +127,7 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
 
   try {
     // UPDATED: Ensure valid model name (gemini-1.5-flash is standard)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
     
     // --- KEY FIX: GET TODAY'S DATE ---
     const today = new Date().toDateString();
