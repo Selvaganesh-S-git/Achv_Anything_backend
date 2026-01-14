@@ -23,9 +23,11 @@ mongoose.connect(process.env.MONGO_URI)
 // AI Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// --- Email Transporter Setup ---
+// --- UPDATED: Email Transporter Setup (Fixes Timeout) ---
 const transporter = nodemailer.createTransport({
-  service: 'gmail', 
+  host: "smtp.gmail.com", // Explicit host for better reliability
+  port: 465,              // Secure SSL port
+  secure: true,           // Use SSL
   auth: {
     user: process.env.EMAIL_USER, 
     pass: process.env.EMAIL_PASS, 
@@ -124,8 +126,8 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
   const { title, description, deadline, hoursPerDay } = req.body;
 
   try {
-    // UPDATED: Use 1.5-flash for stability
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
+    // UPDATED: Ensure valid model name (gemini-1.5-flash is standard)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
     
     // --- KEY FIX: GET TODAY'S DATE ---
     const today = new Date().toDateString();
@@ -228,7 +230,7 @@ app.delete('/api/goals/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// 9. UPDATE ENTIRE GOAL (For Skipping Tasks / Reordering) - *** NEW ROUTE ***
+// 9. UPDATE ENTIRE GOAL (For Skipping Tasks / Reordering)
 app.put('/api/goals/:id', authMiddleware, async (req, res) => {
   try {
     const goalId = req.params.id;
