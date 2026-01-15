@@ -26,7 +26,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // --- BREVO SMTP SETUP ---
 const transporter = nodemailer.createTransport({
   host: "smtp-relay.brevo.com", 
-  port: 587,
+  port: 2525,
   secure: false, 
   auth: {
     user: "a0004d001@smtp-brevo.com", // Hardcoded to ensure accuracy
