@@ -32,6 +32,7 @@ const transporter = nodemailer.createTransport({
     user: "a0004d001@smtp-brevo.com", // Hardcoded to ensure accuracy
     pass: process.env.EMAIL_PASS,     // Keep using the Env Variable for security
   },
+  family:4,
 });
 
 const otpStore = {};
