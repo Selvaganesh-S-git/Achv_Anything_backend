@@ -23,25 +23,20 @@ mongoose.connect(process.env.MONGO_URI)
 // AI Setup
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// --- FINAL EMAIL FIX: Port 587 + IPv4 ---
-// Port 587 uses STARTTLS and is much friendlier to cloud firewalls than 465.
+// --- BREVO SMTP SETUP ---
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,              // Use 587 (Standard for Cloud Servers)
-  secure: false,          // Must be false for 587 (uses STARTTLS)
+  host: "smtp-relay.brevo.com", 
+  port: 587,
+  secure: false, 
   auth: {
-    user: process.env.EMAIL_USER, 
-    pass: process.env.EMAIL_PASS, 
+    user: "a0004d001@smtp-brevo.com", // Hardcoded to ensure accuracy
+    pass: process.env.EMAIL_PASS,     // Keep using the Env Variable for security
   },
-  family: 4,              // Force IPv4 to bypass Google blocks
-  logger: true,           // Log transaction details
-  debug: true,            // Show debug output
-  connectionTimeout: 10000 // 10 seconds timeout
 });
 
 const otpStore = {};
 
-// Middleware to Verify Token
+// Middleware
 const authMiddleware = (req, res, next) => {
   const token = req.header('Authorization');
   if (!token) return res.status(401).json({ error: 'Access denied' });
@@ -91,8 +86,10 @@ app.post('/api/forgot-password', async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   otpStore[email] = { otp, expires: Date.now() + 10 * 60 * 1000 };
 
+  // --- FIX: HARDCODED SENDER ---
+  // This matches exactly what is verified in your Brevo screenshot
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: "sselvaganesh765@gmail.com", 
     to: email,
     subject: 'Password Reset OTP - Goal Planner',
     text: `Your OTP for password reset is: ${otp}. It expires in 10 minutes.`,
@@ -131,30 +128,20 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
   const { title, description, deadline, hoursPerDay } = req.body;
 
   try {
-    // UPDATED: Corrected model name to stable version
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
-    
     const today = new Date().toDateString();
 
     const prompt = `
       Today's date is: ${today}.
       I have a goal: "${title}". Description: "${description}".
       I have ${hoursPerDay} hours per day available. The requested deadline is ${deadline}.
-      
       Generate a day-by-day roadmap starting from tomorrow.
-      
-      CRITICAL RULES:
-      1. Calculate the duration between today (${today}) and the deadline (${deadline}).
-      2. If the goal is impossible to achieve by the requested deadline, extend the timeline to a realistic duration.
-      3. HOWEVER, the total duration MUST NOT exceed 365 days. If it requires more than 365 days, condense the plan to fit exactly 365 days and focus on the core essentials.
-      4. If you changed the user's requested deadline or duration, provide a friendly explanation in 'adjustmentMessage'. If the deadline was perfect, set 'adjustmentMessage' to null.
       
       Strictly return ONLY a JSON object in this format (no markdown, no code fences):
       {
-        "adjustmentMessage": "Your friendly explanation here (or null)",
+        "adjustmentMessage": "Explanation or null",
         "roadmap": [
-          { "day": 1, "task": "Specific task for day 1" },
-          { "day": 2, "task": "Specific task for day 2" }
+          { "day": 1, "task": "Task description" }
         ]
       }
     `;
@@ -162,12 +149,8 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    
     const jsonStr = text.replace(/```json|```/g, '').trim(); 
     const parsedResponse = JSON.parse(jsonStr);
-
-    const roadmap = parsedResponse.roadmap || [];
-    const adjustmentMessage = parsedResponse.adjustmentMessage || null;
 
     const goal = new Goal({
       userId: req.user._id,
@@ -175,8 +158,8 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
       description,
       deadline,
       hoursPerDay,
-      adjustmentMessage, 
-      roadmap
+      adjustmentMessage: parsedResponse.adjustmentMessage || null, 
+      roadmap: parsedResponse.roadmap || []
     });
 
     await goal.save();
@@ -203,7 +186,6 @@ app.put('/api/goals/:goalId/task/:taskId', authMiddleware, async (req, res) => {
   try {
     const { goalId, taskId } = req.params;
     const goal = await Goal.findById(goalId);
-    
     if (!goal) return res.status(404).json({ error: 'Goal not found' });
 
     const task = goal.roadmap.id(taskId);
@@ -222,38 +204,26 @@ app.delete('/api/goals/:id', authMiddleware, async (req, res) => {
   try {
     const goalId = req.params.id;
     const deletedGoal = await Goal.findOneAndDelete({ _id: goalId, userId: req.user._id });
-
-    if (!deletedGoal) {
-      return res.status(404).json({ error: 'Goal not found or unauthorized' });
-    }
-
+    if (!deletedGoal) return res.status(404).json({ error: 'Goal not found' });
     res.json({ message: 'Goal deleted successfully' });
   } catch (error) {
-    console.error("Delete Error:", error);
     res.status(500).json({ error: 'Server error while deleting goal' });
   }
 });
 
-// 9. UPDATE ENTIRE GOAL (For Skipping Tasks / Reordering)
+// 9. UPDATE ENTIRE GOAL
 app.put('/api/goals/:id', authMiddleware, async (req, res) => {
   try {
     const goalId = req.params.id;
-    const updates = req.body; // Expects { roadmap: [...] }
-
-    // Find goal and update specifically the fields sent in body
+    const updates = req.body;
     const updatedGoal = await Goal.findOneAndUpdate(
       { _id: goalId, userId: req.user._id },
       { $set: updates },
-      { new: true } // Return updated doc
+      { new: true }
     );
-
-    if (!updatedGoal) {
-      return res.status(404).json({ error: 'Goal not found or unauthorized' });
-    }
-
+    if (!updatedGoal) return res.status(404).json({ error: 'Goal not found' });
     res.json(updatedGoal);
   } catch (error) {
-    console.error("Update Goal Error:", error);
     res.status(500).json({ error: 'Failed to update goal' });
   }
 });
