@@ -29,10 +29,10 @@ const transporter = nodemailer.createTransport({
   port: 2525,
   secure: false, 
   auth: {
-    user: "a0004d001@smtp-brevo.com", // Hardcoded to ensure accuracy
-    pass: process.env.EMAIL_PASS,     // Keep using the Env Variable for security
+    user: "a0004d001@smtp-brevo.com", 
+    pass: process.env.EMAIL_PASS,    
   },
-  family:4,
+  family: 4,
 });
 
 const otpStore = {};
@@ -87,8 +87,6 @@ app.post('/api/forgot-password', async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   otpStore[email] = { otp, expires: Date.now() + 10 * 60 * 1000 };
 
-  // --- FIX: HARDCODED SENDER ---
-  // This matches exactly what is verified in your Brevo screenshot
   const mailOptions = {
     from: "sselvaganesh765@gmail.com", 
     to: email,
@@ -124,12 +122,13 @@ app.post('/api/reset-password', async (req, res) => {
   res.json({ message: 'Password reset successfully' });
 });
 
-// 5. Create Goal
+// 5. Create Goal (UPDATED WITH FIX)
 app.post('/api/goals', authMiddleware, async (req, res) => {
   const { title, description, deadline, hoursPerDay } = req.body;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" }); 
+    // UPDATED: Use the standard stable model name
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
     const today = new Date().toDateString();
 
     const prompt = `
@@ -150,8 +149,18 @@ app.post('/api/goals', authMiddleware, async (req, res) => {
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    const jsonStr = text.replace(/```json|```/g, '').trim(); 
+
+    // --- CRITICAL FIX START ---
+    // Extract ONLY the JSON object between the first '{' and last '}'
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    
+    if (!jsonMatch) {
+      throw new Error("No JSON found in AI response");
+    }
+
+    const jsonStr = jsonMatch[0]; 
     const parsedResponse = JSON.parse(jsonStr);
+    // --- CRITICAL FIX END ---
 
     const goal = new Goal({
       userId: req.user._id,
